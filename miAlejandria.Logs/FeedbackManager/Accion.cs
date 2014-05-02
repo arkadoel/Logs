@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using FeedBackManager;
+using System.Xml.Linq;
 
 namespace FeedBackManager
 {
@@ -13,6 +14,7 @@ namespace FeedBackManager
         public string TipoDeAccion { get; set; }
         public string PrioridadAccion { get; set; }
         public DateTime FechaHora{ get; set; }
+        public XElement MensajeXML { get; set; }
         
         public Accion()
         {            
@@ -27,6 +29,9 @@ namespace FeedBackManager
             FechaHora = _fechaHora;
         }
 
+
+
+        [Obsolete ("No usar",true)]
         public string toXML()
         {
             string msg = "<Accion ";

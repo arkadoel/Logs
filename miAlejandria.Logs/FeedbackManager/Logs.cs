@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.IO;
+using System.Xml.Linq;
+using System.Xml;
 
 namespace FeedBackManager
 {
@@ -33,18 +35,22 @@ namespace FeedBackManager
                 StreamWriter fich = new StreamWriter(LOG_FILEPATH);
                 fich.WriteLine("<?xml version=\"1.0\"?>");
                 fich.WriteLine("<Acciones>");
+                fich.WriteLine("</Acciones>");
                 fich.Close();
             }
 
             //Evaluar si hay ficheros anteriores y enviar si procede.
-            new System.Threading.Thread(delegate()
+           /* new System.Threading.Thread(delegate()
             {
-                RevisarLogsAntiguosParaEnviar();
+                //RevisarLogsAntiguosParaEnviar();
                 AplicacionEsUsada();
             }).Start();
-
+            */
         }
 
+        /// <summary>
+        /// Permite registrar cuando la aplicacion es usada por un ordenador
+        /// </summary>
         private static void AplicacionEsUsada()
         {
             string mensaje = GetDatosOrdenador();
@@ -53,6 +59,10 @@ namespace FeedBackManager
              */
         }
 
+        /// <summary>
+        /// Conseguir datos estadisticos del ordenador
+        /// </summary>
+        /// <returns></returns>
         private static string GetDatosOrdenador()
         {
             string mensaje = "Aplicacion usada";
@@ -67,6 +77,44 @@ namespace FeedBackManager
             return mensaje;
         }
 
+        /// <summary>
+        /// Excribir en el XML los datos estadisticos del ordenador
+        /// </summary>
+        public static void DatosOrdenador()
+        {
+            XElement e = new XElement("DatosPC",
+                new XElement("Dominio",  Environment.UserDomainName.ToString()),
+                new XElement("NombreMaquina", Environment.MachineName.ToString()),
+                new XElement("Usuario", Environment.UserName.ToString()),
+                new XElement("SistemaOperativo", GetOSVersion()),
+                new XElement("Plataforma", Environment.OSVersion.Platform.ToString()),
+                new XElement("ServicePack", Environment.OSVersion.ServicePack.ToString()),
+                new XElement("VersionOS", Environment.OSVersion.VersionString.ToString()),
+                new XElement("SistemaDe64bits", Environment.Is64BitOperatingSystem.ToString())
+                );
+
+            XDocument doc = XDocument.Load(LOG_FILEPATH);
+
+            try
+            {
+                //escribir xml
+                doc.Element("Acciones").Add(e);
+                doc.Save(LOG_FILEPATH, SaveOptions.None);
+
+            }
+            catch { /*..Ignorar errores..*/  }
+            finally
+            {
+                doc = null;
+                GC.Collect();
+            }
+        }
+
+
+        /// <summary>
+        /// Saber version del sistema operativo
+        /// </summary>
+        /// <returns></returns>
         public static string GetOSVersion()
         {
             switch (Environment.OSVersion.Platform)
@@ -113,6 +161,8 @@ namespace FeedBackManager
                                     return "Windows 7";
                                 case 2:
                                     return "Windows 8";
+                                case 3:
+                                    return "Windows 8.1";
                             }
                             break;
                     }
@@ -122,13 +172,14 @@ namespace FeedBackManager
                     return "Win CE";
             }
 
-            return "Unknown";
+            return "Desconocido";
         }
 
         /// <summary>
         /// Revisa si hay algun archivo de log anterior y lo prepara para
         /// enviarlo automaticamente en segundo plano.
         /// </summary>
+        [Obsolete("Este metodo esta en revision")]
         private static void RevisarLogsAntiguosParaEnviar()
         {
             DirectoryInfo dir = new DirectoryInfo(LOG_DIR);
@@ -206,7 +257,7 @@ namespace FeedBackManager
             acc.PrioridadAccion = prio;
             acc.Titulo = titulo;
             acc.FechaHora = DateTime.Now;
-            GuardarAccion( acc );
+            Guardar( acc );
         }
 
         /// <summary>
@@ -217,26 +268,40 @@ namespace FeedBackManager
         public static void WriteError(string titulo, Exception ex)
         {
             Accion acc = new Accion();
-            acc.Mensaje = "<ErrorMensaje>" + ex.Message + "</ErrorMensaje>";
+            acc.MensajeXML = new XElement("ErrorMensaje");
+
+            acc.MensajeXML.SetValue(ex.Message);           
+
+           // acc.Mensaje = "<ErrorMensaje>" + ex.Message + "</ErrorMensaje>";
             if (ex.InnerException != null)
             {
+                /*
                 acc.Mensaje += "<InnerException><Source>" +
                     ex.InnerException.Source +
                     "</Source><InnerText>" + ex.InnerException.Message + "</InnerText></InnerException>";
-
+                */
+                XElement innerException = new XElement("InnerException",
+                    new XElement("Source", ex.InnerException.Source),
+                    new XElement("InnerText", ex.InnerException.Message)
+                    );
+                acc.MensajeXML.Add(innerException);
             }
-            acc.Mensaje += "<StackTrace>" + ex.StackTrace.ToString() + "</StackTrace>";
+
+            //acc.Mensaje += "<StackTrace>" + ex.StackTrace.ToString() + "</StackTrace>";
+            acc.MensajeXML.Add(new XElement("StackTrace", ex.StackTrace.ToString()));
+
             acc.TipoDeAccion = Constantes.TipoAccion.Error;
             acc.PrioridadAccion = Constantes.Prioridad.Alta;
             acc.Titulo = titulo;
             acc.FechaHora = DateTime.Now;
-            GuardarAccion(acc);
+            Guardar(acc);
         }
 
         /// <summary>
         /// Guarda una accion en el archivo de log.
         /// </summary>
         /// <param name="a"></param>
+        [Obsolete("Metodo antiguo, usar 'Guardar(Accion)'")]
         public static void GuardarAccion(Accion a)
         {
             StreamWriter fich = null;
@@ -249,6 +314,44 @@ namespace FeedBackManager
             finally
             {
                if(fich!=null) fich.Close();
+            }
+        }
+
+        /// <summary>
+        /// Guarda una accion en el archivo de log en formato XML.
+        /// </summary>
+        /// <param name="a">Objeto Accion a guardar</param>
+        public static void Guardar(Accion a)
+        {
+            XDocument doc = XDocument.Load(LOG_FILEPATH);
+            try
+            {
+                //escribir xml
+                XElement elemento = new XElement("Accion");
+                elemento.SetAttributeValue("Titulo", a.Titulo);
+                elemento.SetAttributeValue("Fecha", a.FechaHora.ToShortDateString());
+                elemento.SetAttributeValue("Hora", a.FechaHora.ToLongTimeString());
+                elemento.SetAttributeValue("Prioridad", a.PrioridadAccion);
+                elemento.SetAttributeValue("TipoAccion", a.TipoDeAccion);
+
+                if (a.MensajeXML == null)
+                {
+                    elemento.SetValue(a.Mensaje);
+                }
+                else
+                {
+                    elemento.Add(a.MensajeXML);
+                }
+
+                doc.Element("Acciones").Add(elemento);
+                doc.Save(LOG_FILEPATH,SaveOptions.None);
+
+            }
+            catch { /*..Ignorar errores..*/  }
+            finally
+            {
+                doc = null;
+                GC.Collect();
             }
         }
 
